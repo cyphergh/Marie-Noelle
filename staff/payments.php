@@ -71,7 +71,7 @@ $paymentRows = mysqli_query($con, "
     LEFT JOIN tblappointment a ON a.payment_id = i.BillingId
     WHERE i.ServiceId = '0' AND i.staff = '{$staffId}'
     AND i.PostingDate BETWEEN '{$fromDate}' AND '{$toDate}'
-    GROUP BY i.BillingId, i.PostingDate, i.tax, i.total, i.payment_method, i.qty, i.momo_transaction_id, c.Name, c.Email
+    GROUP BY i.BillingId, i.PostingDate, i.tax, i.total, i.payment_method, i.qty, i.momo_transaction_id, i.discount_type, i.discount_value, i.discount_amount, c.Name, c.Email
     ORDER BY latest_invoice_row_id DESC, i.PostingDate DESC, i.BillingId DESC
 ");
 
