@@ -62,9 +62,11 @@ function staff_render_appointment_row($row, $customerMap, $serviceMap)
     return trim(ob_get_clean());
 }
 
-function staff_create_invoice($con, $appointmentId, $customerId, $serviceIds, $serviceTotal, $taxPercent, $staffId, $paymentMethod = 'Cash', $momoTransactionId = '', $discountType = '', $discountValue = 0, $discountAmount = 0) {
+function staff_create_invoice($con, $appointmentId, $customerId, $serviceIds, $serviceTotal, $taxPercent, $staffId, $paymentMethod = 'Cash', $momoTransactionId = '', $discountType = '', $discountValue = 0, $discountAmount = 0, $postingDate = null) {
     $invoiceId = mt_rand(100000000, 999999999);
-    $postingDate = date('Y-m-d H:i:s');
+    if ($postingDate === null) {
+        $postingDate = date('Y-m-d H:i:s');
+    }
     $momoTxId = mysqli_real_escape_string($con, trim($momoTransactionId));
     $serviceTotalFormatted = number_format((float)$serviceTotal, 2, '.', '');
     $discountTypeDb = !empty($discountType) ? "'" . mysqli_real_escape_string($con, $discountType) . "'" : 'NULL';
@@ -122,8 +124,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
         $email = mysqli_real_escape_string($con, $emailRaw);
         $phoneRaw = trim($_POST['phone'] ?? '');
         $phone = mysqli_real_escape_string($con, $phoneRaw);
-        $aptDate = date('Y-m-d');
-        $aptTime = date('H:i');
+        $walkInMode = trim($_POST['mode'] ?? 'walkin');
+        if ($walkInMode === 'offline') {
+            $aptDate = mysqli_real_escape_string($con, trim($_POST['AptDate'] ?? ''));
+            $aptTime = mysqli_real_escape_string($con, trim($_POST['AptTime'] ?? ''));
+            if (empty($aptDate) || empty($aptTime)) {
+                staff_json_response(false, 'Please provide the appointment date and time.');
+            }
+            $postingDate = $aptDate . ' ' . $aptTime . ':00';
+        } else {
+            $aptDate = date('Y-m-d');
+            $aptTime = date('H:i');
+            $postingDate = date('Y-m-d H:i:s');
+        }
         $genderRaw = trim($_POST['gender'] ?? '');
         $serviceIds = isset($_POST['service_ids']) && is_array($_POST['service_ids']) ? $_POST['service_ids'] : array();
         $submittedServicePrices = isset($_POST['service_prices']) && is_array($_POST['service_prices']) ? $_POST['service_prices'] : array();
@@ -247,7 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
         $grandTotalFormatted = number_format($grandTotal, 2, '.', '');
         $serviceTotalFormatted = number_format($serviceTotal, 2, '.', '');
         $discountAmountFormatted = number_format($discountAmount, 2, '.', '');
-        $remarkText = 'Walk-in appointment';
+        $remarkText = $walkInMode === 'offline' ? 'Offline record' : 'Walk-in appointment';
         if (!empty($validServicePrices)) {
             $remarkText .= ' | custom_prices=' . json_encode($validServicePrices);
         }
@@ -274,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
 
         $newId = mysqli_insert_id($con);
         
-        $invoiceId = staff_create_invoice($con, $newId, $customerId, $validServiceIds, $serviceTotalFormatted, $taxPercent, $staffId, $paymentMethod, $momoTransactionId, $discountType, $discountValue, $discountAmount);
+        $invoiceId = staff_create_invoice($con, $newId, $customerId, $validServiceIds, $serviceTotalFormatted, $taxPercent, $staffId, $paymentMethod, $momoTransactionId, $discountType, $discountValue, $discountAmount, $postingDate);
 
         $allAppointments = mysqli_query($con, "SELECT * FROM tblappointment WHERE Status != '3' AND Status != '2' ORDER BY ID DESC, AptDate DESC, AptTime DESC");
         $tableHtml = '';
@@ -324,7 +337,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
             'grand_total' => $grandTotal,
             'receipt_data' => array(
                 'BillingId' => $invoiceId ?? '',
-                'PostingDate' => date('Y-m-d H:i:s'),
+                'PostingDate' => $postingDate,
                 'total' => $serviceTotalFormatted,
                 'tax' => $taxPercent,
                 'payment_method' => $paymentMethod,
@@ -398,6 +411,10 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
     <button type="button" class="staff-button staff-button-primary" id="openWalkInModal">
         <i class="fa fa-plus"></i>
         New Walk-In Appointment
+    </button>
+    <button type="button" class="staff-button" id="openOfflineRecordBtn" style="margin-left: 8px;">
+        <i class="fa fa-book"></i>
+        Add Offline Record
     </button>
 </div>
 
@@ -483,16 +500,17 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
             <form id="walkInAppointmentForm" style="display: contents;">
                 <div class="modal-header border-0 pb-0" style="padding: 24px 24px 0; flex-shrink: 0;">
                     <div>
-                        <h3 class="modal-title" style="font-family: 'Libre Baskerville', serif; font-size: 1.5rem;">
+                        <h3 class="modal-title" id="walkInModalTitle" style="font-family: 'Libre Baskerville', serif; font-size: 1.5rem;">
                             <i class="fa fa-calendar-plus-o" style="color: var(--staff-accent); margin-right: 10px;"></i>
                             New Walk-In Appointment
                         </h3>
-                        <p class="staff-muted mb-0" style="margin-top: 6px;">Capture an in-store visit for services or products.</p>
+                        <p class="staff-muted mb-0" id="walkInModalSubtitle" style="margin-top: 6px;">Capture an in-store visit for services or products.</p>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body" style="padding: 24px; overflow-y: auto; flex: 1; max-height: calc(90vh - 160px);">
                     <input type="hidden" name="ajax_action" value="create_walkin_appointment">
+                    <input type="hidden" name="mode" id="walkInMode" value="walkin">
                     <div class="walkin-stepper">
                         <div class="walkin-step-panel is-active" data-step-panel="1">
                             <div class="row g-4">
@@ -745,6 +763,17 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                                             <span id="step4ItemCount">0</span> item(s) &middot;
                                             Payment: <span id="step4PaymentMethod">Cash</span>
                                         </div>
+                                        <div id="step4AptDateRow" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--staff-border);">
+                                            <label class="form-label">Appointment Date & Time *</label>
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <input type="date" class="form-control" name="AptDate" id="offlineAptDate">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <input type="time" class="form-control" name="AptTime" id="offlineAptTime">
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="staff-card" style="background: linear-gradient(135deg, rgba(177, 132, 88, 0.08), rgba(43, 91, 85, 0.08)); padding: 18px;">
                                         <h4 style="margin: 0 0 14px; font-family: 'Libre Baskerville', serif; font-size: 1.05rem;">Pricing Summary</h4>
@@ -893,6 +922,13 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
             var modalElement = document.getElementById('walkInAppointmentModal');
             var form = document.getElementById('walkInAppointmentForm');
             var openButton = document.getElementById('openWalkInModal');
+            var openOfflineRecordBtn = document.getElementById('openOfflineRecordBtn');
+            var walkInMode = document.getElementById('walkInMode');
+            var step4AptDateRow = document.getElementById('step4AptDateRow');
+            var offlineAptDate = document.getElementById('offlineAptDate');
+            var offlineAptTime = document.getElementById('offlineAptTime');
+            var walkInModalTitle = document.getElementById('walkInModalTitle');
+            var walkInModalSubtitle = document.getElementById('walkInModalSubtitle');
             var serviceSelect = document.getElementById('walkInServiceIds');
             var servicePriceInputs = document.getElementById('walkInServicePriceInputs');
             var tableBody = document.querySelector('#staffAppointmentsTable tbody');
@@ -952,6 +988,13 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 updateCustomerModeUI();
                 updatePaymentMethodUI();
                 updateDiscountTypeUI();
+                if (walkInMode) walkInMode.value = 'walkin';
+                if (step4AptDateRow) step4AptDateRow.style.display = 'none';
+                if (offlineAptDate) offlineAptDate.value = '';
+                if (offlineAptTime) offlineAptTime.value = '';
+                if (walkInModalTitle) walkInModalTitle.innerHTML = '<i class="fa fa-calendar-plus-o" style="color: var(--staff-accent); margin-right: 10px;"></i> New Walk-In Appointment';
+                if (walkInModalSubtitle) walkInModalSubtitle.textContent = 'Capture an in-store visit for services or products.';
+                if (createBtnText) createBtnText.textContent = 'Create & Collect Payment';
                 goToStep(1);
             }
 
@@ -1221,6 +1264,7 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 var customerNameEl = document.getElementById('step4CustomerName');
                 var itemCountEl = document.getElementById('step4ItemCount');
                 var paymentMethodEl = document.getElementById('step4PaymentMethod');
+                var aptDateRow = document.getElementById('step4AptDateRow');
                 if (customerNameEl) {
                     var selected = form.querySelector('.customer-inline-option.is-selected');
                     customerNameEl.textContent = selected ? (selected.getAttribute('data-name') || 'Customer') : 'No customer selected';
@@ -1231,6 +1275,11 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 if (paymentMethodEl) {
                     var pm = (form.querySelector('input[name="payment_method"]:checked') || {}).value || 'Cash';
                     paymentMethodEl.textContent = pm;
+                }
+                if (aptDateRow && walkInMode && walkInMode.value === 'offline') {
+                    aptDateRow.style.display = 'block';
+                } else if (aptDateRow) {
+                    aptDateRow.style.display = 'none';
                 }
                 recalculateTotal();
             }
@@ -1511,8 +1560,7 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 var discountTypeLabel = data.discount_type || '';
                 var discountVal = parseFloat(data.discount_value) || 0;
                 if (discountAmt > 0) {
-                    var discLabel = discountTypeLabel === 'percentage' ? discountVal + '% OFF' : 'GH₵ ' + discountVal.toFixed(2) + ' OFF';
-                    html += '<div style="color:#000;font-weight:bold;font-size:10px;display:flex;justify-content:space-between;"><span style="color:#a63c3c;">Discount (' + discLabel + ')</span><span style="color:#a63c3c;">-' + formatMoney(discountAmt) + '</span></div>';
+                    html += '<div style="color:#000;font-weight:bold;font-size:10px;display:flex;justify-content:space-between;"><span style="color:#a63c3c;">Discount</span><span style="color:#a63c3c;">-' + formatMoney(discountAmt) + '</span></div>';
                 }
                 html += '<div style="color:#000;font-weight:bold;font-size:11px;display:flex;justify-content:space-between;border-top:1px dashed #000;padding-top:3px;margin-top:3px;"><span>TOTAL</span><span>' + formatMoney(subtotal + totalTax - discountAmt) + '</span></div>';
                 html += '</div>';
@@ -1684,10 +1732,39 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
 
             openButton.onclick = function () {
                 if (walkInModalInstance) {
+                    if (walkInMode) walkInMode.value = 'walkin';
+                    if (step4AptDateRow) step4AptDateRow.style.display = 'none';
+                    if (offlineAptDate) offlineAptDate.value = '';
+                    if (offlineAptTime) offlineAptTime.value = '';
+                    if (walkInModalTitle) walkInModalTitle.innerHTML = '<i class="fa fa-calendar-plus-o" style="color: var(--staff-accent); margin-right: 10px;"></i> New Walk-In Appointment';
+                    if (walkInModalSubtitle) walkInModalSubtitle.textContent = 'Capture an in-store visit for services or products.';
+                    if (createBtnText) createBtnText.textContent = 'Create & Collect Payment';
                     goToStep(1);
                     walkInModalInstance.show();
                 }
             };
+
+            if (openOfflineRecordBtn) {
+                openOfflineRecordBtn.onclick = function () {
+                    if (walkInModalInstance) {
+                        if (walkInMode) walkInMode.value = 'offline';
+                        if (step4AptDateRow) step4AptDateRow.style.display = 'block';
+                        if (offlineAptDate) {
+                            var today = new Date();
+                            offlineAptDate.value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+                        }
+                        if (offlineAptTime) {
+                            var now = new Date();
+                            offlineAptTime.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+                        }
+                        if (walkInModalTitle) walkInModalTitle.innerHTML = '<i class="fa fa-book" style="color: var(--staff-green); margin-right: 10px;"></i> Add Offline Record';
+                        if (walkInModalSubtitle) walkInModalSubtitle.textContent = 'Record a handwritten/offline booking with the actual appointment date.';
+                        if (createBtnText) createBtnText.textContent = 'Create Offline Record';
+                        goToStep(1);
+                        walkInModalInstance.show();
+                    }
+                };
+            }
 
             if (prevStepBtn) {
                 prevStepBtn.onclick = function() {
@@ -1723,6 +1800,10 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 event.stopPropagation();
 
                 if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
+                    return;
+                }
+                if (walkInMode && walkInMode.value === 'offline' && (!offlineAptDate || !offlineAptDate.value || !offlineAptTime || !offlineAptTime.value)) {
+                    window.StaffPortal.showToast('Please provide the appointment date and time.', 'error');
                     return;
                 }
 

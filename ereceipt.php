@@ -243,7 +243,7 @@ body {
             <?php endif; ?>
             <?php if ($discountAmount > 0): ?>
             <div class="row-flex">
-                <span style="color:#a63c3c;">Discount (<?php echo $discountType === 'percentage' ? $discountValue . '% OFF' : 'GHS ' . number_format($discountValue, 2) . ' OFF'; ?>)</span>
+                <span style="color:#a63c3c;">Discount</span>
                 <span style="color:#a63c3c;">-GHS <?php echo number_format($discountAmount, 2); ?></span>
             </div>
             <?php endif; ?>

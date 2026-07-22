@@ -426,8 +426,7 @@ staff_layout_start('Payments', 'payments', 'Track your sales and payment history
         }
 
         if (discountAmount > 0) {
-            var discLabel = discountType === 'percentage' ? discountValue + '% OFF' : 'GH₵ ' + discountValue.toFixed(2) + ' OFF';
-            html += '<div style="color:#a63c3c;font-weight:bold;font-size:10px;display:flex;justify-content:space-between;"><span>Discount (' + discLabel + ')</span><span>-' + formatMoney(discountAmount) + '</span></div>';
+            html += '<div style="color:#a63c3c;font-weight:bold;font-size:10px;display:flex;justify-content:space-between;"><span>Discount</span><span>-' + formatMoney(discountAmount) + '</span></div>';
         }
         html += '<div style="color:#000;font-weight:bold;font-size:11px;display:flex;justify-content:space-between;border-top:1px dashed #000;padding-top:3px;margin-top:3px;"><span>TOTAL</span><span>' + formatMoney(total) + '</span></div>';
         html += '</div>';
