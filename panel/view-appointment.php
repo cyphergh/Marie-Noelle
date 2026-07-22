@@ -37,9 +37,24 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
     if ($status == 1) {
 
 
+      $discount_type = isset($_POST['discount_type']) && !empty($_POST['discount_type']) ? mysqli_real_escape_string($con, $_POST['discount_type']) : '';
+      $discount_value = isset($_POST['discount_value']) ? max(0, (float)$_POST['discount_value']) : 0;
+      $discount_amount = 0;
+      $preDiscTotal = (float)$total + ((float)$total * (float)$tax / 100);
+      if ($discount_type === 'percentage' && $discount_value > 0) {
+        $discount_amount = $preDiscTotal * min($discount_value, 100) / 100;
+      } elseif ($discount_type === 'fixed' && $discount_value > 0) {
+        $discount_amount = min($discount_value, $preDiscTotal);
+      }
+      $discount_amount_formatted = number_format($discount_amount, 2, '.', '');
+      $discount_type_db = !empty($discount_type) ? "'$discount_type'" : 'NULL';
+      $discount_value_db = $discount_value > 0 ? "'$discount_value'" : 'NULL';
+      $discount_amount_db = $discount_amount > 0 ? "'$discount_amount_formatted'" : 'NULL';
+
       // First update the appointment
       $update = mysqli_query($con, "UPDATE tblappointment 
-        SET Remark='$remark', Status='$status',total ='$total',  grand_total='$grand_total', payment_status='$paymentStatus', payment_method='$paymentMethod' 
+        SET Remark='$remark', Status='$status',total ='$total',  grand_total='$grand_total', payment_status='$paymentStatus', payment_method='$paymentMethod',
+            discount_type=$discount_type_db, discount_value=$discount_value_db, discount_amount=$discount_amount_db
         WHERE ID='$cid'");
       //  print_r($_POST); exit;
       if ($update) {
@@ -67,9 +82,9 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
         $serviceTotalFormatted = number_format($serviceTotal, 2, '.', '');
 
         $insert = mysqli_query($con, "INSERT INTO tblinvoice (
-              Userid, ServiceId, BillingId, staff, tax, total, PostingDate, payment_method
+              Userid, ServiceId, BillingId, staff, tax, total, discount_type, discount_value, discount_amount, PostingDate, payment_method
           ) VALUES (
-              '$name', '0', '$invoiceid', '$staffId', '$tax', '$serviceTotalFormatted', '$posting_date', '$paymentMethod'
+              '$name', '0', '$invoiceid', '$staffId', '$tax', '$serviceTotalFormatted', $discount_type_db, $discount_value_db, $discount_amount_db, '$posting_date', '$paymentMethod'
           )");
 
         foreach ($service_ids as $svid) {
@@ -298,9 +313,23 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
                       ?> (<?php echo $taxPercent; ?>%)
                     </td>
                   </tr>
+                  <?php
+                  $discount_type = $row['discount_type'] ?? '';
+                  $discount_value = (float)($row['discount_value'] ?? 0);
+                  $discount_amount = (float)($row['discount_amount'] ?? 0);
+                  if ($discount_amount > 0):
+                  ?>
+                  <tr>
+                    <th>Discount</th>
+                    <td style="color:#c2574f;">
+                      -GH₵<?php echo number_format($discount_amount, 2); ?>
+                      (<?php echo $discount_type === 'percentage' ? $discount_value . '%' : 'GH₵' . number_format($discount_value, 2); ?>)
+                    </td>
+                  </tr>
+                  <?php endif; ?>
                   <tr>
                     <th>Grand Total</th>
-                    <td><strong style="color: green;">GH₵<?php echo number_format($total_cost + $taxAmount, 2); ?></strong></td>
+                    <td><strong style="color: green;">GH₵<?php echo number_format($total_cost + $taxAmount - $discount_amount, 2); ?></strong></td>
                   </tr>
                   <tr>
                     <th>Apply Date</th>
@@ -366,6 +395,20 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
                               <option value="<?php echo $row2['value']; ?>"><?php echo $row2['name']; ?></option>
                             <?php } ?>
                           </select>
+                        </td>
+                      </tr>
+
+                      <tr id="discount_row" style="display: none;">
+                        <th>Discount :</th>
+                        <td>
+                          <div style="display:flex; gap:10px; align-items:center;">
+                            <select class="form-control" id="discount_type" name="discount_type" style="max-width:140px;">
+                              <option value="">None</option>
+                              <option value="percentage">Percentage (%)</option>
+                              <option value="fixed">Fixed (GH₵)</option>
+                            </select>
+                            <input type="number" class="form-control" id="discount_value" name="discount_value" min="0" step="0.01" placeholder="Value" style="max-width:120px;">
+                          </div>
                         </td>
                       </tr>
 
@@ -516,9 +559,30 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
       $(document).ready(function () {
+        function recalculateTotal() {
+          var taxRate = parseFloat($('#tax').val()) || 0;
+          var baseTotal = parseFloat($('#service_total').val()) || 0;
+          var taxAmount = (baseTotal * taxRate) / 100;
+          var preDiscTotal = baseTotal + taxAmount;
+
+          var discType = $('#discount_type').val();
+          var discVal = parseFloat($('#discount_value').val()) || 0;
+          var discAmount = 0;
+
+          if (discType === 'percentage' && discVal > 0) {
+            discAmount = preDiscTotal * Math.min(discVal, 100) / 100;
+          } else if (discType === 'fixed' && discVal > 0) {
+            discAmount = Math.min(discVal, preDiscTotal);
+          }
+
+          var finalTotal = preDiscTotal - discAmount;
+          $('#total').val(finalTotal.toFixed(2));
+        }
+
         function toggleFieldsByStatus(status) {
           if (status === '1') {
             $('#tax_row').show();
+            $('#discount_row').show();
             $('#total_row').show();
             $('#staff').closest('tr').show();
             $('#payment_row').show();
@@ -530,6 +594,7 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
             $('#payment_method').attr('required', true);
           } else {
             $('#tax_row').hide();
+            $('#discount_row').hide();
             $('#total_row').hide();
             $('#staff').closest('tr').hide();
             $('#payment_row').hide();
@@ -540,6 +605,8 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
             $('#total').val('');
             $('#payment_status').val('Unpaid').removeAttr('required');
             $('#payment_method').val('Cash').removeAttr('required');
+            $('#discount_type').val('');
+            $('#discount_value').val('');
           }
         }
 
@@ -547,15 +614,9 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
           toggleFieldsByStatus($(this).val());
         });
 
-        $('#tax').on('change', function () {
-          var taxRate = parseFloat($(this).val()) || 0;
-          var baseTotal = parseFloat($('#service_total').val()) || 0;
-
-          var taxAmount = (baseTotal * taxRate) / 100;
-          var finalTotal = baseTotal + taxAmount;
-
-          $('#total').val(finalTotal.toFixed(2));
-        });
+        $('#tax').on('change', recalculateTotal);
+        $('#discount_type').on('change', recalculateTotal);
+        $('#discount_value').on('input', recalculateTotal);
 
         // Initialize on page load
         toggleFieldsByStatus($('#status').val());

@@ -21,6 +21,10 @@ if (!$record) {
     echo "No record found for the provided ID.";
     exit;
 }
+
+$discount_type = $record['discount_type'] ?? '';
+$discount_value = (float)($record['discount_value'] ?? 0);
+$discount_amount = (float)($record['discount_amount'] ?? 0);
 ?>
 <!doctype html>
 <html lang="en">
@@ -68,6 +72,16 @@ if (!$record) {
                     <td><b>Email:</b>&nbsp;&nbsp;&nbsp; <?php echo htmlspecialchars($record['Email']); ?></td>
                     <td><b>Phone:</b>&nbsp;&nbsp;&nbsp; <?php echo htmlspecialchars($record['PhoneNumber']); ?></td>
                 </tr>
+                <?php if ($discount_amount > 0): ?>
+                <tr>
+                    <td colspan="2"><b>Discount:</b>&nbsp;
+                        <?php 
+                        $disc_label = $discount_type === 'percentage' ? $discount_value . '%' : 'GH₵ ' . number_format($discount_value, 2);
+                        echo htmlspecialchars($disc_label); ?>
+                    </td>
+                    <td style="font-weight:bold;">-GH₵ <?php echo number_format($discount_amount, 2); ?></td>
+                </tr>
+                <?php endif; ?>
                 <tr>
                     <td style="padding-top:30px; padding-bottom:30px;"><b>Received By:</b>&nbsp; Salon Appointment</td>
                 </tr>

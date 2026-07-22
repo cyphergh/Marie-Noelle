@@ -68,6 +68,9 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
         tblinvoice.PostingDate,
         tblinvoice.tax,
         tblinvoice.total,
+        tblinvoice.discount_type,
+        tblinvoice.discount_value,
+        tblinvoice.discount_amount,
         tblcustomers.Name,
         tblcustomers.Email,
         tblcustomers.MobileNumber
@@ -146,6 +149,17 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
 									?></th>
                                 </tr>
 
+                                <?php
+                                $discount_type_inv = $invoiceData['discount_type'] ?? '';
+                                $discount_value_inv = (float)($invoiceData['discount_value'] ?? 0);
+                                $discount_amount_inv = (float)($invoiceData['discount_amount'] ?? 0);
+                                if ($discount_amount_inv > 0):
+                                ?>
+                                <tr>
+                                    <th colspan="2" style="text-align:center; color:#c2574f;">Discount (<?php echo $discount_type_inv === 'percentage' ? $discount_value_inv . '%' : 'GH₵' . number_format($discount_value_inv, 2); ?>)</th>
+                                    <th style="color:#c2574f;">-GH₵<?php echo number_format($discount_amount_inv, 2); ?></th>
+                                </tr>
+                                <?php endif; ?>
                                 <tr style="background-color:#e8f5e9;">
                                     <th colspan="2" style="text-align:center">Grand Total</th>
                                     <th>GH₵<?php echo number_format($invoiceData['total'], 2); ?></th>

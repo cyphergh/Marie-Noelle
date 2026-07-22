@@ -16,9 +16,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $Services = isset($_POST['serv_id']) ? implode(",", $_POST['serv_id']) : '';
     $remark = "Booked";
     $date = date('d-m-Y H:i:s');
+    $discount_type = isset($_POST['discount_type']) && !empty($_POST['discount_type']) ? "'" . mysqli_real_escape_string($con, $_POST['discount_type']) . "'" : 'NULL';
+    $discount_value = isset($_POST['discount_value']) && (float)$_POST['discount_value'] > 0 ? "'" . (float)$_POST['discount_value'] . "'" : 'NULL';
+    $discount_amount_val = 0;
+    if ($discount_type !== 'NULL') {
+        $dt = trim($_POST['discount_type'], "'");
+        $dv = (float)$_POST['discount_value'];
+        $subtotal = (float)$_POST['total'];
+        $tax_percent_booking = 0;
+        $ret_tax = mysqli_query($con, "select * from tbl_tax");
+        while ($row_tax = mysqli_fetch_array($ret_tax)) { $tax_percent_booking += (float)$row_tax['value']; }
+        $pre_disc = $subtotal + ($subtotal * $tax_percent_booking / 100);
+        $discount_amount_val = ($dt === 'percentage') ? $pre_disc * min($dv, 100) / 100 : min($dv, $pre_disc);
+    }
+    $discount_amount = $discount_amount_val > 0 ? "'" . number_format($discount_amount_val, 2, '.', '') . "'" : 'NULL';
 
-    $sql = "INSERT INTO tblappointment (AptNumber, Status, Name, Email, PhoneNumber, AptDate, AptTime, Remark, RemarkDate, Services, total, grand_total) 
-            VALUES ('$AptNumber','$status', '$Name', '$Email', '$PhoneNumber', '$AptDate', '$AptTime','$remark','$date', '$Services','$total','$grand_total')";
+    $sql = "INSERT INTO tblappointment (AptNumber, Status, Name, Email, PhoneNumber, AptDate, AptTime, Remark, RemarkDate, Services, total, grand_total, discount_type, discount_value, discount_amount) 
+            VALUES ('$AptNumber','$status', '$Name', '$Email', '$PhoneNumber', '$AptDate', '$AptTime','$remark','$date', '$Services','$total','$grand_total', $discount_type, $discount_value, $discount_amount)";
 
     if (mysqli_query($con, $sql)) {
         $newId = mysqli_insert_id($con);

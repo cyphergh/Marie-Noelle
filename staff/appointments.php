@@ -62,15 +62,18 @@ function staff_render_appointment_row($row, $customerMap, $serviceMap)
     return trim(ob_get_clean());
 }
 
-function staff_create_invoice($con, $appointmentId, $customerId, $serviceIds, $serviceTotal, $taxPercent, $staffId, $paymentMethod = 'Cash', $momoTransactionId = '') {
+function staff_create_invoice($con, $appointmentId, $customerId, $serviceIds, $serviceTotal, $taxPercent, $staffId, $paymentMethod = 'Cash', $momoTransactionId = '', $discountType = '', $discountValue = 0, $discountAmount = 0) {
     $invoiceId = mt_rand(100000000, 999999999);
     $postingDate = date('Y-m-d H:i:s');
     $momoTxId = mysqli_real_escape_string($con, trim($momoTransactionId));
     $serviceTotalFormatted = number_format((float)$serviceTotal, 2, '.', '');
+    $discountTypeDb = !empty($discountType) ? "'" . mysqli_real_escape_string($con, $discountType) . "'" : 'NULL';
+    $discountValueDb = $discountValue > 0 ? "'" . number_format((float)$discountValue, 2, '.', '') . "'" : 'NULL';
+    $discountAmountDb = $discountAmount > 0 ? "'" . number_format((float)$discountAmount, 2, '.', '') . "'" : 'NULL';
     
     mysqli_query($con, "
-        INSERT INTO tblinvoice (Userid, ServiceId, BillingId, staff, tax, total, PostingDate, payment_method, qty, momo_transaction_id, commision) 
-        VALUES ('{$customerId}', '0', '{$invoiceId}', '{$staffId}', '{$taxPercent}', '{$serviceTotalFormatted}', '{$postingDate}', '{$paymentMethod}', '1', '{$momoTxId}', '0')
+        INSERT INTO tblinvoice (Userid, ServiceId, BillingId, staff, tax, total, discount_type, discount_value, discount_amount, PostingDate, payment_method, qty, momo_transaction_id, commision) 
+        VALUES ('{$customerId}', '0', '{$invoiceId}', '{$staffId}', '{$taxPercent}', '{$serviceTotalFormatted}', {$discountTypeDb}, {$discountValueDb}, {$discountAmountDb}, '{$postingDate}', '{$paymentMethod}', '1', '{$momoTxId}', '0')
     ");
     
     foreach ($serviceIds as $serviceId) {
@@ -228,9 +231,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
             $taxPercent += (float) ($taxRow['value'] ?? 0);
         }
         
-        $grandTotal = $serviceTotal + ($serviceTotal * $taxPercent / 100);
+        $discountType = isset($_POST['discount_type']) ? trim($_POST['discount_type']) : '';
+        $discountValue = isset($_POST['discount_value']) ? max(0, (float) $_POST['discount_value']) : 0;
+        $preDiscountGrandTotal = $serviceTotal + ($serviceTotal * $taxPercent / 100);
+        if ($discountType === 'percentage' && $discountValue > 0) {
+            $discountAmount = $preDiscountGrandTotal * min($discountValue, 100) / 100;
+        } elseif ($discountType === 'fixed' && $discountValue > 0) {
+            $discountAmount = min($discountValue, $preDiscountGrandTotal);
+        } else {
+            $discountType = '';
+            $discountValue = 0;
+            $discountAmount = 0;
+        }
+        $grandTotal = $preDiscountGrandTotal - $discountAmount;
         $grandTotalFormatted = number_format($grandTotal, 2, '.', '');
         $serviceTotalFormatted = number_format($serviceTotal, 2, '.', '');
+        $discountAmountFormatted = number_format($discountAmount, 2, '.', '');
         $remarkText = 'Walk-in appointment';
         if (!empty($validServicePrices)) {
             $remarkText .= ' | custom_prices=' . json_encode($validServicePrices);
@@ -239,10 +255,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
         $emailValue = !empty($emailRaw) ? "'" . mysqli_real_escape_string($con, $emailRaw) . "'" : 'NULL';
         $momoTransactionId = isset($_POST['momo_transaction_id']) ? trim($_POST['momo_transaction_id']) : '';
 
+        $discountTypeDb = !empty($discountType) ? "'" . mysqli_real_escape_string($con, $discountType) . "'" : 'NULL';
+        $discountValueDb = $discountValue > 0 ? "'{$discountValue}'" : 'NULL';
+        $discountAmountDb = $discountAmount > 0 ? "'{$discountAmountFormatted}'" : 'NULL';
+
         $insertAppointment = mysqli_query(
             $con,
-            "INSERT INTO tblappointment (AptNumber, Name, Email, PhoneNumber, AptDate, AptTime, Services, Remark, Status, total, grand_total, payment_id, order_id, payment_status, payment_method, momo_transaction_id) 
-             VALUES ('{$appointmentNumber}', '{$customerId}', {$emailValue}, '{$phone}', '{$aptDate}', '{$aptTime}', '{$serviceList}', '{$remark}', '1', '{$serviceTotalFormatted}', '{$grandTotalFormatted}', '', '', 'Unpaid', '{$paymentMethod}', '{$momoTransactionId}')"
+            "INSERT INTO tblappointment (AptNumber, Name, Email, PhoneNumber, AptDate, AptTime, Services, Remark, Status, total, grand_total, discount_type, discount_value, discount_amount, payment_id, order_id, payment_status, payment_method, momo_transaction_id) 
+             VALUES ('{$appointmentNumber}', '{$customerId}', {$emailValue}, '{$phone}', '{$aptDate}', '{$aptTime}', '{$serviceList}', '{$remark}', '1', '{$serviceTotalFormatted}', '{$grandTotalFormatted}', {$discountTypeDb}, {$discountValueDb}, {$discountAmountDb}, '', '', 'Unpaid', '{$paymentMethod}', '{$momoTransactionId}')"
         );
 
         if (!$insertAppointment) {
@@ -251,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
 
         $newId = mysqli_insert_id($con);
         
-        $invoiceId = staff_create_invoice($con, $newId, $customerId, $validServiceIds, $serviceTotalFormatted, $taxPercent, $staffId, $paymentMethod, $momoTransactionId);
+        $invoiceId = staff_create_invoice($con, $newId, $customerId, $validServiceIds, $serviceTotalFormatted, $taxPercent, $staffId, $paymentMethod, $momoTransactionId, $discountType, $discountValue, $discountAmount);
 
         $allAppointments = mysqli_query($con, "SELECT * FROM tblappointment WHERE Status != '3' AND Status != '2' ORDER BY ID DESC, AptDate DESC, AptTime DESC");
         $tableHtml = '';
@@ -310,6 +330,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
                 'service_costs' => implode('|', $serviceCosts),
                 'service_ids' => implode('|', $validServiceIds),
                 'tax_list' => $taxList,
+                'discount_type' => $discountType,
+                'discount_value' => $discountValue,
+                'discount_amount' => $discountAmount,
             ),
         ));
     }
@@ -643,6 +666,33 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                                             </span>
                                         </div>
                                     </div>
+                                    <div class="staff-card" style="padding: 18px; margin-bottom: 16px;">
+                                        <label class="form-label">Discount (optional)</label>
+                                        <div class="d-flex gap-3 align-items-start flex-wrap">
+                                            <label class="payment-method-option" style="flex: 1; min-width: 140px;">
+                                                <input type="radio" name="discount_type" value="" checked style="display: none;">
+                                                <div class="staff-card discount-type-card" data-value="" style="text-align: center; cursor: pointer; border: 2px solid var(--staff-border); padding: 10px;">
+                                                    <div style="font-weight: 700; font-size: 13px; color: var(--staff-muted);">No Discount</div>
+                                                </div>
+                                            </label>
+                                            <label class="payment-method-option" style="flex: 1; min-width: 140px;">
+                                                <input type="radio" name="discount_type" value="percentage" style="display: none;">
+                                                <div class="staff-card discount-type-card" data-value="percentage" style="text-align: center; cursor: pointer; border: 2px solid var(--staff-border); padding: 10px;">
+                                                    <div style="font-weight: 700; font-size: 13px; color: var(--staff-muted);">Percentage (%)</div>
+                                                </div>
+                                            </label>
+                                            <label class="payment-method-option" style="flex: 1; min-width: 140px;">
+                                                <input type="radio" name="discount_type" value="fixed" style="display: none;">
+                                                <div class="staff-card discount-type-card" data-value="fixed" style="text-align: center; cursor: pointer; border: 2px solid var(--staff-border); padding: 10px;">
+                                                    <div style="font-weight: 700; font-size: 13px; color: var(--staff-muted);">Fixed (GH₵)</div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                        <div id="discountValueWrapper" style="display: none; margin-top: 12px;">
+                                            <label class="form-label" id="discountValueLabel">Discount Value</label>
+                                            <input type="number" class="form-control" name="discount_value" id="discountValueInput" min="0" step="0.01" placeholder="Enter discount value" style="max-width: 220px;">
+                                        </div>
+                                    </div>
                                     <label class="form-label">Payment Method *</label>
                                     <div class="d-flex gap-3 flex-wrap">
                                         <label class="payment-method-option" style="flex: 1; min-width: 160px;">
@@ -735,6 +785,10 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                             <span class="confirm-tax-amount" data-tax-percent="<?php echo (float) $tax['value']; ?>">GH₵ 0.00</span>
                         </div>
                     <?php endwhile; ?>
+                    <div class="d-flex justify-content-between align-items-center mb-2" id="confirmDiscountRow" style="display: none;">
+                        <span style="color: var(--staff-danger); font-size: 13px; font-weight: 700;">Discount</span>
+                        <span id="confirmDiscountAmount" style="font-weight: 700; color: var(--staff-danger);">GH₵ 0.00</span>
+                    </div>
                     <hr style="border-color: var(--staff-border); margin: 12px 0;">
                     <div class="d-flex justify-content-between align-items-center">
                         <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.08em;">Grand Total</span>
@@ -916,6 +970,7 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 recalculateTotal();
                 updateCustomerModeUI();
                 updatePaymentMethodUI();
+                updateDiscountTypeUI();
                 goToStep(1);
                 isConfirmingSubmit = false;
             }
@@ -1201,6 +1256,8 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                         confirmSelectedItemsList.appendChild(row);
                     }
                 }
+
+                recalculateTotal();
             }
 
             function updateCustomerModeUI() {
@@ -1270,7 +1327,32 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                     totalTaxAmount += confirmTaxAmt;
                 }
 
-                var grandTotal = subtotal + totalTaxAmount;
+                var preDiscountGrandTotal = subtotal + totalTaxAmount;
+
+                var discountTypeEl = form.querySelector('input[name="discount_type"]:checked');
+                var discountType = discountTypeEl ? discountTypeEl.value : '';
+                var discountValue = parseFloat(document.getElementById('discountValueInput') ? document.getElementById('discountValueInput').value : 0) || 0;
+                var discountAmount = 0;
+                var discountValueLabel = document.getElementById('discountValueLabel');
+
+                if (discountType === 'percentage' && discountValue > 0) {
+                    discountAmount = preDiscountGrandTotal * Math.min(discountValue, 100) / 100;
+                    if (discountValueLabel) discountValueLabel.textContent = 'Discount (%)';
+                } else if (discountType === 'fixed' && discountValue > 0) {
+                    discountAmount = Math.min(discountValue, preDiscountGrandTotal);
+                    if (discountValueLabel) discountValueLabel.textContent = 'Discount (GH₵)';
+                }
+
+                var discountAmtDisplay = document.getElementById('confirmDiscountAmount');
+                if (discountAmtDisplay && discountAmount > 0) {
+                    discountAmtDisplay.textContent = 'GH₵ ' + discountAmount.toFixed(2);
+                    discountAmtDisplay.closest('.d-flex').style.display = 'flex';
+                } else if (discountAmtDisplay) {
+                    discountAmtDisplay.textContent = 'GH₵ 0.00';
+                    discountAmtDisplay.closest('.d-flex').style.display = 'none';
+                }
+
+                var grandTotal = preDiscountGrandTotal - discountAmount;
                 if (confirmGrandTotal) {
                     confirmGrandTotal.textContent = 'GH₵ ' + grandTotal.toFixed(2);
                 }
@@ -1444,7 +1526,14 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                     totalTax += taxAmt;
                     html += '<div style="color:#000;font-weight:bold;font-size:10px;display:flex;justify-content:space-between;"><span>' + taxName + ' (' + taxRate + '%)</span><span>' + formatMoney(taxAmt) + '</span></div>';
                 }
-                html += '<div style="color:#000;font-weight:bold;font-size:11px;display:flex;justify-content:space-between;border-top:1px dashed #000;padding-top:3px;margin-top:3px;"><span>TOTAL</span><span>' + formatMoney(subtotal + totalTax) + '</span></div>';
+                var discountAmt = parseFloat(data.discount_amount) || 0;
+                var discountTypeLabel = data.discount_type || '';
+                var discountVal = parseFloat(data.discount_value) || 0;
+                if (discountAmt > 0) {
+                    var discLabel = discountTypeLabel === 'percentage' ? discountVal + '% OFF' : 'GH₵ ' + discountVal.toFixed(2) + ' OFF';
+                    html += '<div style="color:#000;font-weight:bold;font-size:10px;display:flex;justify-content:space-between;"><span style="color:#a63c3c;">Discount (' + discLabel + ')</span><span style="color:#a63c3c;">-' + formatMoney(discountAmt) + '</span></div>';
+                }
+                html += '<div style="color:#000;font-weight:bold;font-size:11px;display:flex;justify-content:space-between;border-top:1px dashed #000;padding-top:3px;margin-top:3px;"><span>TOTAL</span><span>' + formatMoney(subtotal + totalTax - discountAmt) + '</span></div>';
                 html += '</div>';
 
                 html += '<div style="text-align:center;margin:6px 0;padding:4px 0;border-top:1px solid #000;border-bottom:1px solid #000;">';
@@ -1508,6 +1597,50 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
             var paymentRadios = form.querySelectorAll('input[name="payment_method"]');
             for (var i = 0; i < paymentRadios.length; i++) {
                 paymentRadios[i].onchange = updatePaymentMethodUI;
+            }
+
+            function updateDiscountTypeUI() {
+                var radios = form.querySelectorAll('input[name="discount_type"]');
+                var selectedValue = '';
+                for (var i = 0; i < radios.length; i++) {
+                    if (radios[i].checked) { selectedValue = radios[i].value; break; }
+                }
+                var cards = form.querySelectorAll('.discount-type-card');
+                for (var j = 0; j < cards.length; j++) {
+                    var card = cards[j];
+                    var isActive = card.getAttribute('data-value') === selectedValue;
+                    card.style.borderColor = isActive ? 'var(--staff-green)' : 'var(--staff-border)';
+                    card.style.background = isActive ? 'var(--staff-green-soft)' : '';
+                    var title = card.querySelector('div');
+                    if (title) title.style.color = isActive ? 'var(--staff-green)' : 'var(--staff-muted)';
+                }
+                var wrapper = document.getElementById('discountValueWrapper');
+                var input = document.getElementById('discountValueInput');
+                if (wrapper) wrapper.style.display = selectedValue ? 'block' : 'none';
+                if (!selectedValue && input) input.value = '';
+                recalculateTotal();
+            }
+
+            var discountCards = form.querySelectorAll('.discount-type-card');
+            for (var i = 0; i < discountCards.length; i++) {
+                discountCards[i].onclick = function() {
+                    var value = this.getAttribute('data-value');
+                    var radio = form.querySelector('input[name="discount_type"][value="' + value + '"]');
+                    if (radio) { radio.checked = true; }
+                    updateDiscountTypeUI();
+                };
+            }
+
+            var discountRadios = form.querySelectorAll('input[name="discount_type"]');
+            for (var i = 0; i < discountRadios.length; i++) {
+                discountRadios[i].onchange = updateDiscountTypeUI;
+            }
+
+            var discountValueInput = document.getElementById('discountValueInput');
+            if (discountValueInput) {
+                discountValueInput.oninput = function() {
+                    recalculateTotal();
+                };
             }
 
             var customerModeRadios = form.querySelectorAll('input[name="customer_mode"]');
@@ -1601,6 +1734,7 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
             updateSelectedCustomerSummary();
             updateCustomerModeUI();
             updatePaymentMethodUI();
+            updateDiscountTypeUI();
             updateStepperUI();
 
             form.onsubmit = async function (event) {

@@ -94,28 +94,38 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
 											<th>S.NO</th>
 											<th>Month / Year </th>
 											<th>Sales</th>
+											<th>Discount</th>
+											<th>Net Sales</th>
 										</tr>
 									</thead>
 									<?php
 									$ret = mysqli_query($con, "select month(PostingDate) as lmonth,year(PostingDate) as lyear,sum(Cost) as totalprice from  tblinvoice join tblservices on tblservices.ID= tblinvoice.ServiceId where date(tblinvoice.PostingDate) between '$fdate' and '$tdate' group by lmonth,lyear");
 									$cnt = 1;
 									while ($row = mysqli_fetch_array($ret)) {
-
+										$ym = $row['lyear'] . '-' . str_pad($row['lmonth'], 2, '0', STR_PAD_LEFT);
+										$disc_ret = mysqli_query($con, "SELECT COALESCE(SUM(discount_amount), 0) as total_disc FROM tblinvoice WHERE ServiceId='0' AND DATE_FORMAT(PostingDate, '%Y-%m') = '$ym'");
+										$disc_row = mysqli_fetch_assoc($disc_ret);
+										$disc_total = (float)($disc_row['total_disc'] ?? 0);
 										?>
 
 										<tr>
 											<td><?php echo $cnt; ?></td>
 											<td><?php echo $row['lmonth'] . "/" . $row['lyear']; ?></td>
 											<td><?php echo $total = $row['totalprice']; ?></td>
+											<td style="color:#c2574f;"><?php echo number_format($disc_total, 2); ?></td>
+											<td><?php echo number_format($total - $disc_total, 2); ?></td>
 
 										</tr>
 										<?php
 										$ftotal += $total;
+										$ftotal_disc += $disc_total;
 										$cnt++;
 									} ?>
 									<tr>
 										<td colspan="2" align="center">Total </td>
-										<td><?php echo $ftotal; ?></td>
+										<td><?php echo number_format($ftotal, 2); ?></td>
+										<td style="color:#c2574f;"><?php echo number_format($ftotal_disc, 2); ?></td>
+										<td><?php echo number_format($ftotal - $ftotal_disc, 2); ?></td>
 
 
 
@@ -137,6 +147,8 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
 											<th>S.NO</th>
 											<th>Year </th>
 											<th>Sales</th>
+											<th>Discount</th>
+											<th>Net Sales</th>
 										</tr>
 									</thead>
 									<?php
@@ -144,22 +156,30 @@ if (strlen($_SESSION['bpmsaid'] == 0)) {
 
 									$cnt = 1;
 									while ($row = mysqli_fetch_array($ret)) {
-
+										$yr = $row['lyear'];
+										$disc_ret = mysqli_query($con, "SELECT COALESCE(SUM(discount_amount), 0) as total_disc FROM tblinvoice WHERE ServiceId='0' AND YEAR(PostingDate) = '$yr'");
+										$disc_row = mysqli_fetch_assoc($disc_ret);
+										$disc_total = (float)($disc_row['total_disc'] ?? 0);
 										?>
 
 										<tr>
 											<td><?php echo $cnt; ?></td>
 											<td><?php echo $row['lyear']; ?></td>
 											<td><?php echo $total = $row['totalprice']; ?></td>
+											<td style="color:#c2574f;"><?php echo number_format($disc_total, 2); ?></td>
+											<td><?php echo number_format($total - $disc_total, 2); ?></td>
 
 										</tr>
 										<?php
 										$ftotal += $total;
+										$ftotal_disc += $disc_total;
 										$cnt++;
 									} ?>
 									<tr>
 										<td colspan="2" align="center">Total </td>
-										<td><?php echo $ftotal; ?></td>
+										<td><?php echo number_format($ftotal, 2); ?></td>
+										<td style="color:#c2574f;"><?php echo number_format($ftotal_disc, 2); ?></td>
+										<td><?php echo number_format($ftotal - $ftotal_disc, 2); ?></td>
 
 
 

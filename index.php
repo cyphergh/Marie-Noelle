@@ -1481,6 +1481,9 @@ $taxCount = mysqli_num_rows(mysqli_query($con, "select * from tbl_tax"));
                   <input type="text" id="fullname" name="name" class="form-control" placeholder="Enter your full name">
                 </div>
 
+                <input type="hidden" name="discount_type" id="discount_type" value="">
+                <input type="hidden" name="discount_value" id="discount_value" value="0">
+
                 <div class="col-md-6">
                   <label for="email" class="form-label">Email Address</label>
                   <input type="email" id="email" name="email" class="form-control" placeholder="Enter your email">
@@ -1515,31 +1518,48 @@ $taxCount = mysqli_num_rows(mysqli_query($con, "select * from tbl_tax"));
                   </select>
                 </div>
 
-                <div class="col-12">
-                  <div class="summary-card">
-                    <h3>Pricing Summary</h3>
-                    <p>Your pricing updates automatically based on selected services and configured taxes.</p>
+                  <div class="col-12">
+                    <div class="summary-card">
+                      <h3>Pricing Summary</h3>
+                      <p>Your pricing updates automatically based on selected services and configured taxes.</p>
 
-                    <div class="summary-line">
-                      <span>Base price</span>
-                      <input type="text" id="total" name="total" value="" readonly style="text-align:right;">
-                    </div>
-
-                    <?php
-                    $ret = mysqli_query($con, "select * from tbl_tax");
-                    while ($row = mysqli_fetch_array($ret)) { ?>
                       <div class="summary-line">
-                        <span><?php echo $row['name']; ?> (%)</span>
-                        <input type="text" value="<?php echo $row['value']; ?>" class="tax_value" readonly>
+                        <span>Base price</span>
+                        <input type="text" id="total" name="total" value="" readonly style="text-align:right;">
                       </div>
-                    <?php } ?>
 
-                    <div class="summary-line summary-total">
-                      <span>Total with tax (GH₵)</span>
-                      <input type="text" id="grand_total" name="grand_total" value="" readonly style="text-align:right;">
+                      <?php
+                      $ret = mysqli_query($con, "select * from tbl_tax");
+                      while ($row = mysqli_fetch_array($ret)) { ?>
+                        <div class="summary-line">
+                          <span><?php echo $row['name']; ?> (%)</span>
+                          <input type="text" value="<?php echo $row['value']; ?>" class="tax_value" readonly>
+                        </div>
+                      <?php } ?>
+
+                      <div class="summary-line" id="discount_summary_line" style="display:none;">
+                        <span>Discount</span>
+                        <input type="text" id="discount_display" value="" readonly style="text-align:right;color:#c2574f;">
+                      </div>
+
+                      <div class="summary-line" id="discount_type_wrapper" style="border-bottom:none; padding-bottom:4px;">
+                        <span style="font-size:13px; font-weight:600;">Have a discount?</span>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                          <select id="discount_type_select" style="padding:6px 10px; border-radius:10px; border:1px solid var(--border); font-size:13px; background:transparent;">
+                            <option value="">None</option>
+                            <option value="percentage">%</option>
+                            <option value="fixed">GH₵</option>
+                          </select>
+                          <input type="number" id="discount_value_input" min="0" step="0.01" value="" placeholder="0" style="width:90px; padding:6px 10px; border-radius:10px; border:1px solid var(--border); font-size:13px;">
+                        </div>
+                      </div>
+
+                      <div class="summary-line summary-total">
+                        <span>Total with tax (GH₵)</span>
+                        <input type="text" id="grand_total" name="grand_total" value="" readonly style="text-align:right;">
+                      </div>
                     </div>
                   </div>
-                </div>
 
                 <div class="col-12">
                   <button type="submit" class="btn-book">Book Appointment</button>
@@ -1649,14 +1669,12 @@ $taxCount = mysqli_num_rows(mysqli_query($con, "select * from tbl_tax"));
 
   <script>
     $(document).ready(function () {
-      $('#services-select').on('change', function () {
+      function updatePricing() {
         let total = 0;
-
         $('#services-select option:selected').each(function () {
           let cost = parseFloat($(this).data('cost')) || 0;
           total += cost;
         });
-
         $('#total').val(total.toFixed(2));
 
         let taxPercent = 0;
@@ -1665,9 +1683,39 @@ $taxCount = mysqli_num_rows(mysqli_query($con, "select * from tbl_tax"));
           taxPercent += val;
         });
 
-        let finalAmount = total + (total * taxPercent / 100);
+        let taxAmount = total * taxPercent / 100;
+        let preDiscountTotal = total + taxAmount;
+
+        let discType = $('#discount_type_select').val();
+        let discVal = parseFloat($('#discount_value_input').val()) || 0;
+        let discAmount = 0;
+
+        if (discType === 'percentage' && discVal > 0) {
+          discAmount = preDiscountTotal * Math.min(discVal, 100) / 100;
+        } else if (discType === 'fixed' && discVal > 0) {
+          discAmount = Math.min(discVal, preDiscountTotal);
+        }
+
+        if (discAmount > 0) {
+          $('#discount_summary_line').show();
+          let discLabel = discType === 'percentage' ? discVal + '%' : 'GH₵ ' + discVal.toFixed(2);
+          $('#discount_display').val('-' + discAmount.toFixed(2));
+          $('#discount_type').val(discType);
+          $('#discount_value').val(discVal);
+        } else {
+          $('#discount_summary_line').hide();
+          $('#discount_display').val('');
+          $('#discount_type').val('');
+          $('#discount_value').val(0);
+        }
+
+        let finalAmount = preDiscountTotal - discAmount;
         $('#grand_total').val(finalAmount.toFixed(2));
-      });
+      }
+
+      $('#services-select').on('change', updatePricing);
+      $('#discount_type_select').on('change', updatePricing);
+      $('#discount_value_input').on('input', updatePricing);
     });
   </script>
 

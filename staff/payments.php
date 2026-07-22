@@ -52,6 +52,7 @@ if ($taxResult) {
 $paymentRows = mysqli_query($con, "
     SELECT MAX(i.id) AS latest_invoice_row_id,
            i.BillingId, i.PostingDate, i.tax, i.total, i.payment_method, i.qty, i.momo_transaction_id,
+           i.discount_type, i.discount_value, i.discount_amount,
            c.Name AS customer_name, c.Email AS customer_email,
            MAX(a.Remark) AS appointment_remark,
            (SELECT GROUP_CONCAT(s2.ServiceName SEPARATOR '|') 
@@ -190,7 +191,10 @@ staff_layout_start('Payments', 'payments', 'Track your sales and payment history
                             'service_ids' => $row['service_ids'] ?? '',
                             'service_costs' => $row['service_costs'] ?? '',
                             'appointment_remark' => $row['appointment_remark'] ?? '',
-                            'tax_list' => $taxList
+                            'tax_list' => $taxList,
+                            'discount_type' => $row['discount_type'] ?? '',
+                            'discount_value' => $row['discount_value'] ?? 0,
+                            'discount_amount' => $row['discount_amount'] ?? 0
                         ];
                     ?>
                         <tr data-invoice='<?php echo htmlspecialchars(json_encode($invoiceData), ENT_QUOTES, 'UTF-8'); ?>'>
@@ -344,7 +348,15 @@ staff_layout_start('Payments', 'payments', 'Track your sales and payment history
         var subtotal = parseFloat(data.total) || 0;
         var taxPercent = parseFloat(data.tax) || 0;
         var taxAmount = subtotal * (taxPercent / 100);
-        var total = subtotal + taxAmount;
+        var preDiscountTotal = subtotal + taxAmount;
+        var discountType = data.discount_type || '';
+        var discountValue = parseFloat(data.discount_value) || 0;
+        var discountAmount = parseFloat(data.discount_amount) || 0;
+        if (discountAmount > 0) {
+            var discCalc = discountType === 'percentage' ? preDiscountTotal * Math.min(discountValue, 100) / 100 : Math.min(discountValue, preDiscountTotal);
+            discountAmount = Math.min(discountAmount, discCalc);
+        }
+        var total = preDiscountTotal - discountAmount;
         var invoiceId = data.BillingId || data.id || 'N/A';
         var date = new Date(data.PostingDate).toLocaleString('en-GB', {
             day: '2-digit', month: 'short', year: 'numeric',
@@ -413,6 +425,10 @@ staff_layout_start('Payments', 'payments', 'Track your sales and payment history
             html += '<div style="color:#000;font-weight:bold;font-size:10px;display:flex;justify-content:space-between;"><span>Tax (' + taxPercent + '%)</span><span>' + formatMoney(taxAmount) + '</span></div>';
         }
 
+        if (discountAmount > 0) {
+            var discLabel = discountType === 'percentage' ? discountValue + '% OFF' : 'GH₵ ' + discountValue.toFixed(2) + ' OFF';
+            html += '<div style="color:#a63c3c;font-weight:bold;font-size:10px;display:flex;justify-content:space-between;"><span>Discount (' + discLabel + ')</span><span>-' + formatMoney(discountAmount) + '</span></div>';
+        }
         html += '<div style="color:#000;font-weight:bold;font-size:11px;display:flex;justify-content:space-between;border-top:1px dashed #000;padding-top:3px;margin-top:3px;"><span>TOTAL</span><span>' + formatMoney(total) + '</span></div>';
         html += '</div>';
 
