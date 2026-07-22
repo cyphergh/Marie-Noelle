@@ -259,10 +259,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
         $discountValueDb = $discountValue > 0 ? "'{$discountValue}'" : 'NULL';
         $discountAmountDb = $discountAmount > 0 ? "'{$discountAmountFormatted}'" : 'NULL';
 
+        do { $ereceiptToken = (string) mt_rand(1000000000, 9999999999); } while (mysqli_query($con, "SELECT 1 FROM tblappointment WHERE ereceipt_token = '{$ereceiptToken}'")->num_rows > 0);
+        $ereceiptTokenDb = "'{$ereceiptToken}'";
+
         $insertAppointment = mysqli_query(
             $con,
-            "INSERT INTO tblappointment (AptNumber, Name, Email, PhoneNumber, AptDate, AptTime, Services, Remark, Status, total, grand_total, discount_type, discount_value, discount_amount, payment_id, order_id, payment_status, payment_method, momo_transaction_id) 
-             VALUES ('{$appointmentNumber}', '{$customerId}', {$emailValue}, '{$phone}', '{$aptDate}', '{$aptTime}', '{$serviceList}', '{$remark}', '1', '{$serviceTotalFormatted}', '{$grandTotalFormatted}', {$discountTypeDb}, {$discountValueDb}, {$discountAmountDb}, '', '', 'Unpaid', '{$paymentMethod}', '{$momoTransactionId}')"
+            "INSERT INTO tblappointment (AptNumber, Name, Email, PhoneNumber, AptDate, AptTime, Services, Remark, Status, total, grand_total, discount_type, discount_value, discount_amount, payment_id, order_id, payment_status, payment_method, momo_transaction_id, ereceipt_token) 
+             VALUES ('{$appointmentNumber}', '{$customerId}', {$emailValue}, '{$phone}', '{$aptDate}', '{$aptTime}', '{$serviceList}', '{$remark}', '1', '{$serviceTotalFormatted}', '{$grandTotalFormatted}', {$discountTypeDb}, {$discountValueDb}, {$discountAmountDb}, '', '', 'Unpaid', '{$paymentMethod}', '{$momoTransactionId}', {$ereceiptTokenDb})"
         );
 
         if (!$insertAppointment) {
@@ -309,7 +312,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && staff_is_ajax_request()) {
         ]);
 
         include_once __DIR__ . '/../panel/includes/sms_helper.php';
-        send_sms($phone);
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $receiptLink = $protocol . '://' . $_SERVER['HTTP_HOST'] . '/ereceipt.php?token=' . urlencode($ereceiptToken);
+        send_sms($phone, 'View your e-receipt: ' . $receiptLink);
 
         staff_json_response(true, $message, array(
             'table_html' => $tableHtml,
@@ -727,6 +732,48 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                                 </div>
                             </div>
                         </div>
+
+                        <div class="walkin-step-panel" data-step-panel="4">
+                            <div class="row g-4">
+                                <div class="col-12">
+                                    <div class="staff-card" style="padding: 18px; margin-bottom: 16px;">
+                                        <h4 style="margin: 0 0 14px; font-family: 'Libre Baskerville', serif; font-size: 1.05rem;">Review Booking</h4>
+                                        <div id="step4CustomerInfo" style="font-size: 13px; margin-bottom: 10px;">
+                                            <strong id="step4CustomerName">No customer selected</strong>
+                                        </div>
+                                        <div style="font-size: 13px; color: var(--staff-muted);">
+                                            <span id="step4ItemCount">0</span> item(s) &middot;
+                                            Payment: <span id="step4PaymentMethod">Cash</span>
+                                        </div>
+                                    </div>
+                                    <div class="staff-card" style="background: linear-gradient(135deg, rgba(177, 132, 88, 0.08), rgba(43, 91, 85, 0.08)); padding: 18px;">
+                                        <h4 style="margin: 0 0 14px; font-family: 'Libre Baskerville', serif; font-size: 1.05rem;">Pricing Summary</h4>
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span style="color: var(--staff-muted); font-size: 13px;">Subtotal</span>
+                                            <span id="step4Subtotal" style="font-weight: 700;">GH₵ 0.00</span>
+                                        </div>
+                                        <?php
+                                        mysqli_data_seek($taxOptions, 0);
+                                        while ($tax = mysqli_fetch_assoc($taxOptions)):
+                                        ?>
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <span style="color: var(--staff-muted); font-size: 13px;"><?php echo staff_escape($tax['name']); ?> (<?php echo (float) $tax['value']; ?>%)</span>
+                                                <span class="step4-tax-amount" data-tax-percent="<?php echo (float) $tax['value']; ?>">GH₵ 0.00</span>
+                                            </div>
+                                        <?php endwhile; ?>
+                                        <div class="d-flex justify-content-between align-items-center mb-2" id="step4DiscountRow" style="display: none;">
+                                            <span style="color: var(--staff-danger); font-size: 13px; font-weight: 700;">Discount</span>
+                                            <span id="step4DiscountAmount" style="font-weight: 700; color: var(--staff-danger);">GH₵ 0.00</span>
+                                        </div>
+                                        <hr style="border-color: var(--staff-border); margin: 12px 0;">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.08em;">Grand Total</span>
+                                            <strong id="step4GrandTotal" style="font-size: 1.35rem; color: var(--staff-green);">GH₵ 0.00</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer border-0 pt-0" style="padding: 0 24px 24px; flex-shrink: 0;">
@@ -750,63 +797,8 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
         </div>
     </div>
 </div>
-
-<div class="modal fade" id="walkInConfirmModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered" style="max-height: 88vh;">
-        <div class="modal-content" style="border-radius: var(--staff-radius-lg); border: 0; overflow: hidden;">
-            <div class="modal-header border-0 pb-0">
-                <div>
-                    <h3 class="modal-title" style="font-family: 'Libre Baskerville', serif;">
-                        <i class="fa fa-check-circle" style="color: var(--staff-green); margin-right: 10px;"></i>
-                        Confirm Walk-In Booking
-                    </h3>
-                    <p class="staff-muted mb-0" style="margin-top: 6px;">Review selected items and payment summary before completing the booking.</p>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body" style="padding: 24px; overflow-y: auto;">
-                <div class="staff-card" style="padding: 18px; margin-bottom: 16px;">
-                    <h4 style="margin: 0 0 12px; font-family: 'Libre Baskerville', serif; font-size: 1.05rem;">Selected Items</h4>
-                    <div id="confirmSelectedItemsEmpty" class="staff-muted" style="font-size: 13px;">No items selected.</div>
-                    <div id="confirmSelectedItemsList" style="display: grid; gap: 10px;"></div>
-                </div>
-                <div class="staff-card" style="background: linear-gradient(135deg, rgba(177, 132, 88, 0.08), rgba(43, 91, 85, 0.08)); padding: 18px;">
-                    <h4 style="margin: 0 0 14px; font-family: 'Libre Baskerville', serif; font-size: 1.05rem;">Pricing Summary</h4>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span style="color: var(--staff-muted); font-size: 13px;">Subtotal</span>
-                        <span id="confirmSubtotal" style="font-weight: 700;">GH₵ 0.00</span>
-                    </div>
-                    <?php
-                    mysqli_data_seek($taxOptions, 0);
-                    while ($tax = mysqli_fetch_assoc($taxOptions)):
-                    ?>
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span style="color: var(--staff-muted); font-size: 13px;"><?php echo staff_escape($tax['name']); ?> (<?php echo (float) $tax['value']; ?>%)</span>
-                            <span class="confirm-tax-amount" data-tax-percent="<?php echo (float) $tax['value']; ?>">GH₵ 0.00</span>
-                        </div>
-                    <?php endwhile; ?>
-                    <div class="d-flex justify-content-between align-items-center mb-2" id="confirmDiscountRow" style="display: none;">
-                        <span style="color: var(--staff-danger); font-size: 13px; font-weight: 700;">Discount</span>
-                        <span id="confirmDiscountAmount" style="font-weight: 700; color: var(--staff-danger);">GH₵ 0.00</span>
-                    </div>
-                    <hr style="border-color: var(--staff-border); margin: 12px 0;">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.08em;">Grand Total</span>
-                        <strong id="confirmGrandTotal" style="font-size: 1.35rem; color: var(--staff-green);">GH₵ 0.00</strong>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer border-0 pt-0">
-                <button type="button" class="staff-button" data-bs-dismiss="modal">Back</button>
-                <button type="button" class="staff-button staff-button-primary" id="confirmCreateAppointmentBtn">
-                    <i class="fa fa-check"></i>
-                    Confirm Booking
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
 <style>
+    .walkin-stepper {
         display: flex;
         flex-direction: column;
         gap: 24px;
@@ -893,11 +885,9 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
     (function () {
         'use strict';
 
-        var walkInModalInstance = null;
-        var confirmModalInstance = null;
-        var currentForm = null;
-        var isConfirmingSubmit = false;
-        var latestReceiptData = null;
+            var walkInModalInstance = null;
+            var currentForm = null;
+            var latestReceiptData = null;
 
         function initWalkInModal() {
             var modalElement = document.getElementById('walkInAppointmentModal');
@@ -909,7 +899,6 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
             var cashCard = document.getElementById('cashPaymentCard');
             var createBtnText = document.getElementById('createBtnText');
             var createAppointmentBtn = document.getElementById('createAppointmentBtn');
-            var confirmModal = document.getElementById('walkInConfirmModal');
             var customerSearch = document.getElementById('walkInCustomerSearch');
             var customerSelect = document.getElementById('walkInCustomerId');
             var inlineCustomerList = document.getElementById('inlineCustomerList');
@@ -921,11 +910,6 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
             var newCustomerSection = document.getElementById('newCustomerSection');
             var selectedCustomerName = document.getElementById('selectedCustomerName');
             var selectedCustomerMeta = document.getElementById('selectedCustomerMeta');
-            var confirmSelectedItemsEmpty = document.getElementById('confirmSelectedItemsEmpty');
-            var confirmSelectedItemsList = document.getElementById('confirmSelectedItemsList');
-            var confirmSubtotal = document.getElementById('confirmSubtotal');
-            var confirmGrandTotal = document.getElementById('confirmGrandTotal');
-            var confirmCreateAppointmentBtn = document.getElementById('confirmCreateAppointmentBtn');
             var stepPanels = form.querySelectorAll('.walkin-step-panel');
             var prevStepBtn = document.getElementById('walkInPrevStepBtn');
             var nextStepBtn = document.getElementById('walkInNextStepBtn');
@@ -945,9 +929,6 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 }
                 walkInModalInstance = new bootstrap.Modal(modalElement);
                 modalElement.addEventListener('hidden.bs.modal', handleModalHidden);
-                if (confirmModal) {
-                    confirmModalInstance = new bootstrap.Modal(confirmModal);
-                }
             } else {
                 console.log('Bootstrap Modal not available');
                 return;
@@ -972,7 +953,6 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 updatePaymentMethodUI();
                 updateDiscountTypeUI();
                 goToStep(1);
-                isConfirmingSubmit = false;
             }
 
             function validateStep(stepNumber) {
@@ -1102,6 +1082,7 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 if (email) meta.push(email);
                 selectedCustomerMeta.textContent = meta.length ? meta.join(' | ') : 'Customer selected';
                 document.getElementById('selectedCustomerSummary').style.display = 'block';
+                updateStep4ReviewInfo();
             }
 
             function filterServiceOptions(searchTerm) {
@@ -1168,7 +1149,7 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 syncServicePriceInputs();
                 updateSelectedServicesSummary();
                 recalculateTotal();
-                updateConfirmModalSummary();
+                updateStep4ReviewInfo();
             }
 
             function clearInlineServiceSelection() {
@@ -1236,27 +1217,21 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 return selected;
             }
 
-            function updateConfirmModalSummary() {
-                var selected = getSelectedServiceData();
-
-                if (confirmSelectedItemsList) {
-                    confirmSelectedItemsList.innerHTML = '';
+            function updateStep4ReviewInfo() {
+                var customerNameEl = document.getElementById('step4CustomerName');
+                var itemCountEl = document.getElementById('step4ItemCount');
+                var paymentMethodEl = document.getElementById('step4PaymentMethod');
+                if (customerNameEl) {
+                    var selected = form.querySelector('.customer-inline-option.is-selected');
+                    customerNameEl.textContent = selected ? (selected.getAttribute('data-name') || 'Customer') : 'No customer selected';
                 }
-
-                if (confirmSelectedItemsEmpty) {
-                    confirmSelectedItemsEmpty.style.display = selected.length ? 'none' : 'block';
+                if (itemCountEl) {
+                    itemCountEl.textContent = serviceSelect ? serviceSelect.selectedOptions.length : 0;
                 }
-
-                for (var i = 0; i < selected.length; i++) {
-                    var item = selected[i];
-                    if (confirmSelectedItemsList) {
-                        var row = document.createElement('div');
-                        row.className = 'confirm-item-row';
-                        row.innerHTML = '<span>' + item.label + '</span><strong>GH₵ ' + item.cost.toFixed(2) + '</strong>';
-                        confirmSelectedItemsList.appendChild(row);
-                    }
+                if (paymentMethodEl) {
+                    var pm = (form.querySelector('input[name="payment_method"]:checked') || {}).value || 'Cash';
+                    paymentMethodEl.textContent = pm;
                 }
-
                 recalculateTotal();
             }
 
@@ -1313,18 +1288,19 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                     subtotal += cost;
                 }
 
-                if (confirmSubtotal) {
-                    confirmSubtotal.textContent = 'GH₵ ' + subtotal.toFixed(2);
+                var subtotalDisplay = document.getElementById('step4Subtotal');
+                if (subtotalDisplay) {
+                    subtotalDisplay.textContent = 'GH₵ ' + subtotal.toFixed(2);
                 }
 
-                var confirmTaxAmounts = document.querySelectorAll('.confirm-tax-amount');
+                var taxElements = document.querySelectorAll('.step4-tax-amount');
                 var totalTaxAmount = 0;
-                for (var k = 0; k < confirmTaxAmounts.length; k++) {
-                    var confirmTaxEl = confirmTaxAmounts[k];
-                    var confirmPercent = parseFloat(confirmTaxEl.getAttribute('data-tax-percent')) || 0;
-                    var confirmTaxAmt = subtotal * (confirmPercent / 100);
-                    confirmTaxEl.textContent = 'GH₵ ' + confirmTaxAmt.toFixed(2);
-                    totalTaxAmount += confirmTaxAmt;
+                for (var k = 0; k < taxElements.length; k++) {
+                    var taxEl = taxElements[k];
+                    var taxPercent = parseFloat(taxEl.getAttribute('data-tax-percent')) || 0;
+                    var taxAmt = subtotal * (taxPercent / 100);
+                    taxEl.textContent = 'GH₵ ' + taxAmt.toFixed(2);
+                    totalTaxAmount += taxAmt;
                 }
 
                 var preDiscountGrandTotal = subtotal + totalTaxAmount;
@@ -1343,18 +1319,22 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                     if (discountValueLabel) discountValueLabel.textContent = 'Discount (GH₵)';
                 }
 
-                var discountAmtDisplay = document.getElementById('confirmDiscountAmount');
-                if (discountAmtDisplay && discountAmount > 0) {
-                    discountAmtDisplay.textContent = 'GH₵ ' + discountAmount.toFixed(2);
-                    discountAmtDisplay.closest('.d-flex').style.display = 'flex';
-                } else if (discountAmtDisplay) {
-                    discountAmtDisplay.textContent = 'GH₵ 0.00';
-                    discountAmtDisplay.closest('.d-flex').style.display = 'none';
+                var step4DiscountAmtDisplay = document.getElementById('step4DiscountAmount');
+                var step4DiscountRow = document.getElementById('step4DiscountRow');
+                if (step4DiscountAmtDisplay && step4DiscountRow) {
+                    if (discountAmount > 0) {
+                        step4DiscountAmtDisplay.textContent = 'GH₵ ' + discountAmount.toFixed(2);
+                        step4DiscountRow.style.display = 'flex';
+                    } else {
+                        step4DiscountAmtDisplay.textContent = 'GH₵ 0.00';
+                        step4DiscountRow.style.display = 'none';
+                    }
                 }
 
                 var grandTotal = preDiscountGrandTotal - discountAmount;
-                if (confirmGrandTotal) {
-                    confirmGrandTotal.textContent = 'GH₵ ' + grandTotal.toFixed(2);
+                var step4GrandTotal = document.getElementById('step4GrandTotal');
+                if (step4GrandTotal) {
+                    step4GrandTotal.textContent = 'GH₵ ' + grandTotal.toFixed(2);
                 }
 
                 var step3count = document.getElementById('step3ItemCount');
@@ -1465,6 +1445,7 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                     }
                     if (createBtnText) createBtnText.textContent = 'Create & Mark as Paid';
                 }
+                updateStep4ReviewInfo();
             }
 
             function generateReceiptHTML(data) {
@@ -1724,13 +1705,13 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 syncServicePriceInputs();
                 recalculateTotal();
                 updateSelectedServicesSummary();
-                updateConfirmModalSummary();
+                updateStep4ReviewInfo();
             };
             recalculateTotal();
             syncInlineServicesToSelect();
             syncServicePriceInputs();
             updateSelectedServicesSummary();
-            updateConfirmModalSummary();
+            updateStep4ReviewInfo();
             updateSelectedCustomerSummary();
             updateCustomerModeUI();
             updatePaymentMethodUI();
@@ -1741,32 +1722,17 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                 event.preventDefault();
                 event.stopPropagation();
 
-                if (!isConfirmingSubmit) {
-                    if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
-                        return;
-                    }
-
-                    updateConfirmModalSummary();
-                    recalculateTotal();
-                    if (confirmModalInstance) {
-                        confirmModalInstance.show();
-                    }
+                if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
                     return;
                 }
 
                 var formData = new FormData(form);
                 var submitBtn = form.querySelector('button[type="submit"]');
                 var originalBtnText = submitBtn ? submitBtn.innerHTML : '';
-                var confirmBtnOriginal = confirmCreateAppointmentBtn ? confirmCreateAppointmentBtn.innerHTML : '';
-                isConfirmingSubmit = false;
 
                 if (submitBtn) {
                     submitBtn.disabled = true;
                     submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
-                }
-                if (confirmCreateAppointmentBtn) {
-                    confirmCreateAppointmentBtn.disabled = true;
-                    confirmCreateAppointmentBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
                 }
 
                 try {
@@ -1800,9 +1766,6 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                         }
                     }
 
-                    if (confirmModalInstance) {
-                        confirmModalInstance.hide();
-                    }
                     if (walkInModalInstance) {
                         walkInModalInstance.hide();
                     }
@@ -1820,19 +1783,8 @@ staff_layout_start('Appointments', 'appointments', 'Manage bookings and create w
                         submitBtn.disabled = false;
                         submitBtn.innerHTML = originalBtnText;
                     }
-                    if (confirmCreateAppointmentBtn) {
-                        confirmCreateAppointmentBtn.disabled = false;
-                        confirmCreateAppointmentBtn.innerHTML = confirmBtnOriginal;
-                    }
                 }
             };
-
-            if (confirmCreateAppointmentBtn) {
-                confirmCreateAppointmentBtn.onclick = function() {
-                    isConfirmingSubmit = true;
-                    form.requestSubmit();
-                };
-            }
         }
 
         function initPage() {

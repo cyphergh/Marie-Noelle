@@ -84,10 +84,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             panel_json_response(false, 'Please complete the appointment form.');
         }
 
+        do { $ereceiptToken = (string) mt_rand(1000000000, 9999999999); } while (mysqli_query($con, "SELECT 1 FROM tblappointment WHERE ereceipt_token = '{$ereceiptToken}'")->num_rows > 0);
+
         $insertQuery = mysqli_query(
             $con,
-            "INSERT INTO tblappointment(AptNumber, Name, Email, PhoneNumber, AptDate, AptTime, Services, Remark, Status, total, grand_total, payment_id, order_id, payment_status) 
-             VALUES ('{$appointmentNumber}', '{$customerId}', '{$email}', '{$phone}', '{$aptDate}', '{$aptTime}', '{$serviceList}', '', '0', '0', '0', '', '', 'Pending')"
+            "INSERT INTO tblappointment(AptNumber, Name, Email, PhoneNumber, AptDate, AptTime, Services, Remark, Status, total, grand_total, payment_id, order_id, payment_status, ereceipt_token) 
+             VALUES ('{$appointmentNumber}', '{$customerId}', '{$email}', '{$phone}', '{$aptDate}', '{$aptTime}', '{$serviceList}', '', '0', '0', '0', '', '', 'Pending', '{$ereceiptToken}')"
         );
 
         if (!$insertQuery) {
@@ -112,7 +114,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
 
         include_once 'includes/sms_helper.php';
-        send_sms($phone);
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $receiptLink = $protocol . '://' . $_SERVER['HTTP_HOST'] . '/ereceipt.php?token=' . urlencode($ereceiptToken);
+        send_sms($phone, 'View your e-receipt: ' . $receiptLink);
 
         panel_json_response(true, 'Appointment created successfully.', array(
             'row_html' => render_appointment_row($appointmentRow, $customers),

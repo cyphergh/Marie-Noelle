@@ -1,6 +1,6 @@
 <?php
 
-function send_sms($phone)
+function send_sms($phone, $extraMessage = '')
 {
     $ini = parse_ini_file(__DIR__ . '/../../info.ini', true);
     $apiKey = $ini['sms']['api_key'] ?? '';
@@ -17,6 +17,9 @@ function send_sms($phone)
     }
 
     $message = "Thank you for choosing our spa today. We're delighted to have served you. Your well-being is our priority, and we look forward to welcoming you again soon.";
+    if (!empty($extraMessage)) {
+        $message .= ' ' . $extraMessage;
+    }
 
     $payload = json_encode([
         'key' => $apiKey,

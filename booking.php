@@ -31,8 +31,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     $discount_amount = $discount_amount_val > 0 ? "'" . number_format($discount_amount_val, 2, '.', '') . "'" : 'NULL';
 
-    $sql = "INSERT INTO tblappointment (AptNumber, Status, Name, Email, PhoneNumber, AptDate, AptTime, Remark, RemarkDate, Services, total, grand_total, discount_type, discount_value, discount_amount) 
-            VALUES ('$AptNumber','$status', '$Name', '$Email', '$PhoneNumber', '$AptDate', '$AptTime','$remark','$date', '$Services','$total','$grand_total', $discount_type, $discount_value, $discount_amount)";
+    do { $ereceiptToken = (string) mt_rand(1000000000, 9999999999); } while (mysqli_query($con, "SELECT 1 FROM tblappointment WHERE ereceipt_token = '{$ereceiptToken}'")->num_rows > 0);
+
+    $sql = "INSERT INTO tblappointment (AptNumber, Status, Name, Email, PhoneNumber, AptDate, AptTime, Remark, RemarkDate, Services, total, grand_total, discount_type, discount_value, discount_amount, ereceipt_token) 
+            VALUES ('$AptNumber','$status', '$Name', '$Email', '$PhoneNumber', '$AptDate', '$AptTime','$remark','$date', '$Services','$total','$grand_total', $discount_type, $discount_value, $discount_amount, '$ereceiptToken')";
 
     if (mysqli_query($con, $sql)) {
         $newId = mysqli_insert_id($con);
@@ -59,7 +61,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ]);
         
         include_once 'panel/includes/sms_helper.php';
-        send_sms($PhoneNumber);
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $receiptLink = $protocol . '://' . $_SERVER['HTTP_HOST'] . '/ereceipt.php?token=' . urlencode($ereceiptToken);
+        send_sms($PhoneNumber, 'View your e-receipt: ' . $receiptLink);
         
         echo "success";
     } else {
