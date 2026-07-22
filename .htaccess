@@ -1,0 +1,27 @@
+DirectoryIndex index.php index.html
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    
+    # Allow direct access to staff folder
+    RewriteRule ^staff/ - [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    # Disable caching for JS and CSS files
+    <FilesMatch "\.(js|css)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </FilesMatch>
+    
+    # Allow caching for images, fonts, and other static assets
+    <FilesMatch "\.(jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot|otf)$">
+        Header set Cache-Control "max-age=31536000, public"
+    </FilesMatch>
+</IfModule>
+
+# Disable ErrorDocument redirects for local development
+ErrorDocument 404 /404.php
+ErrorDocument 500 /500.php

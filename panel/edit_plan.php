@@ -1,0 +1,157 @@
+<?php
+session_start();
+error_reporting(0);
+include('includes/dbconnection.php');
+if (strlen($_SESSION['bpmsaid'] == 0)) {
+	header('location:logout.php');
+} else {
+
+	if (isset($_POST['submit'])) {
+		$sername = $_POST['plan_name'];
+		$duration_days = $_POST['duration_days'];
+		$description = $_POST['description'];
+		$price = $_POST['price'];
+		$eid = $_GET['editid'];
+
+		$query = mysqli_query($con, "update  membership_plans set plan_name='$sername', duration_days='$duration_days',description='$description',price='$price' where id ='$eid' ");
+		if ($query) {
+
+			echo '<script>alert("Plan has been Updated")</script>';
+			echo "<script>window.location.href = 'manage_plan.php'</script>";
+		} else {
+			echo '<script>alert("Something Went Wrong. Please try again.")</script>';
+		}
+
+
+	}
+	?>
+	<!DOCTYPE HTML>
+	<html>
+
+	<head>
+		<title>Marie Noelle Spa and Salon | Update Staff</title>
+		<link rel="icon" type="image/x-icon" href="images/logo.png">
+		<script
+			type="application/x-javascript"> addEventListener("load", function() { setTimeout(hideURLbar, 0); }, false); function hideURLbar(){ window.scrollTo(0,1); } </script>
+		<!-- Bootstrap Core CSS -->
+		<link href="css/bootstrap.css" rel='stylesheet' type='text/css' />
+		<!-- Custom CSS -->
+		<link href="css/style.css" rel='stylesheet' type='text/css' />
+		<!-- font CSS -->
+		<!-- font-awesome icons -->
+		<link href="css/font-awesome.css" rel="stylesheet">
+		<!-- //font-awesome icons -->
+		<!-- js-->
+		<script src="js/jquery-1.11.1.min.js"></script>
+		<script src="js/modernizr.custom.js"></script>
+		<!--webfonts-->
+		<link href='//fonts.googleapis.com/css?family=Roboto+Condensed:400,300,300italic,400italic,700,700italic'
+			rel='stylesheet' type='text/css'>
+		<!--//webfonts-->
+		<!--animate-->
+		<link href="css/animate.css" rel="stylesheet" type="text/css" media="all">
+		<script src="js/wow.min.js"></script>
+		<script>
+			new WOW().init();
+		</script>
+		<!--//end-animate-->
+		<!-- Metis Menu -->
+		<script src="js/metisMenu.min.js"></script>
+		<script src="js/custom.js"></script>
+		<link href="css/custom.css" rel="stylesheet">
+		<!--//Metis Menu -->
+	</head>
+
+	<body class="cbp-spmenu-push">
+		<div class="main-content">
+			<!--left-fixed -navigation-->
+			<?php include_once('includes/sidebar.php'); ?>
+			<!--left-fixed -navigation-->
+			<!-- header-starts -->
+			<?php include_once('includes/header.php'); ?>
+			<!-- //header-ends -->
+			<!-- main content start-->
+			<div id="page-wrapper">
+				<div class="main-page">
+					<div class="forms">
+						<h3 class="title1">Update Staff</h3>
+						<div class="form-grids row widget-shadow" data-example-id="basic-forms">
+							<div class="form-title">
+								<h4>Update Staff:</h4>
+							</div>
+							<div class="form-body">
+								<form method="post" class="row">
+
+									<?php
+									$cid = $_GET['editid'];
+									$ret = mysqli_query($con, "select * from  membership_plans where id ='$cid'");
+									$cnt = 1;
+									while ($row = mysqli_fetch_array($ret)) {
+
+										?>
+
+
+										<div class="form-group col-md-6"> <label for="exampleInputEmail1">Name</label> <input
+												type="text" class="form-control" name="plan_name" placeholder="Plan Name"
+												value="<?php echo $row['plan_name']; ?>" required="true"> </div>
+
+										<div class="form-group col-md-6"> <label for="exampleInputPassword1">Description</label>
+											<textarea type="text" id="description" name="description" class="form-control"
+												placeholder="Description" value=""
+												required="true"><?php echo $row['description']; ?></textarea>
+										</div>
+
+										<div class="form-group col-md-6"> <label for="exampleInputEmail1">Duration</label>
+											<input type="number" class="form-control" id="duration_days" name="duration_days"
+												placeholder="Duration (days)" value="<?php echo $row['duration_days']; ?>"
+												required="true" maxlength="10" pattern="[0-9]+">
+										</div>
+
+
+										<div class="form-group col-md-6"> <label for="exampleInputEmail1">Price</label> <input
+												type="number" class="form-control" step="0.01" name="price" placeholder="Price"
+												value="<?php echo $row['price']; ?>" required="true"> </div>
+									<?php } ?>
+									<div class="col-md-12">
+										<button type="submit" name="submit" class="btn btn-default">Update</button>
+									</div>
+								</form>
+							</div>
+
+						</div>
+
+
+					</div>
+				</div>
+				<?php include_once('includes/footer.php'); ?>
+			</div>
+			<!-- Classie -->
+			<script src="js/classie.js"></script>
+			<script>
+				var menuLeft = document.getElementById('cbp-spmenu-s1'),
+					showLeftPush = document.getElementById('showLeftPush'),
+					body = document.body;
+
+				showLeftPush.onclick = function () {
+					classie.toggle(this, 'active');
+					classie.toggle(body, 'cbp-spmenu-push-toright');
+					classie.toggle(menuLeft, 'cbp-spmenu-open');
+					disableOther('showLeftPush');
+				};
+
+				function disableOther(button) {
+					if (button !== 'showLeftPush') {
+						classie.toggle(showLeftPush, 'disabled');
+					}
+				}
+			</script>
+			<!--scrolling js-->
+			<script src="js/jquery.nicescroll.js"></script>
+			<script src="js/scripts.js"></script>
+			<!--//scrolling js-->
+			<!-- Bootstrap Core JavaScript -->
+			<script src="js/bootstrap.js"> </script>
+	</body>
+
+	</html>
+<?php } ?>
